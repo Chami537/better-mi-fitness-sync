@@ -435,11 +435,11 @@ object MiFitnessParsers {
      * Mirrors `DayNightSleepReport.isValidSleep`: bed/wake anchors plus a
      * positive `duration` are required when no stage items are present.
      */
-    private fun isValidSleepPayload(obj: JsonObject): Boolean {
+    private fun isValidSleepPayload(obj: JsonObject, fallbackDuration: Long = 0L): Boolean {
         val bedtime = obj["bedtime"]?.jsonPrimitive?.longOrNull ?: 0L
         val wakeUp = obj["wake_up_time"]?.jsonPrimitive?.longOrNull ?: 0L
         if (bedtime > 0 && wakeUp > 0 && wakeUp > bedtime) return true
-        val duration = obj["duration"]?.jsonPrimitive?.longOrNull ?: 0L
+        val duration = obj["duration"]?.jsonPrimitive?.longOrNull ?: fallbackDuration
         if (bedtime > 0 && wakeUp > 0 && duration > 0) return true
         val items = try {
             obj["items"]?.jsonArray
@@ -469,15 +469,47 @@ object MiFitnessParsers {
             .map { WorkoutTimedSample(it.timestamp, it.bpm.toDouble()) }
             .distinctBy { it.timeSec }
 
+    /**
+     * Mi Cloud sleep rows are daily-report envelopes: aggregates live at the top level
+     * (`total_duration`, `sleep_score`, ...) while per-segment fields (`bedtime`,
+     * `wake_up_time`, `items`, ...) sit inside `segment_details[]` (issue #52).
+     * A day can carry several segments (night sleep plus naps), so each row expands
+     * to one session per segment.
+     */
     fun parseSleepSessions(entries: List<RawFitnessEntry>): List<SleepSession> =
         entries
             .filter { it.key in SLEEP_KEYS }
-            .mapNotNull { entry -> parseSleepSession(entry) }
+            .flatMap { entry -> parseSegmentSessions(entry) }
 
-    fun parseSleepSession(entry: RawFitnessEntry): SleepSession? {
+    fun parseSleepSession(entry: RawFitnessEntry): SleepSession? =
+        parseSegmentSessions(entry).firstOrNull()
+
+    private fun parseSegmentSessions(entry: RawFitnessEntry): List<SleepSession> {
         return try {
-            val obj = json.parseToJsonElement(entry.value).jsonObject
-            if (!isValidSleepPayload(obj)) return null
+            val root = json.parseToJsonElement(entry.value).jsonObject
+            val fallbackDuration = root["total_duration"]?.jsonPrimitive?.longOrNull ?: 0L
+            root["segment_details"]?.jsonArray
+                ?.mapNotNull {
+                    try {
+                        it.jsonObject
+                    } catch (_: Exception) {
+                        null
+                    }
+                }
+                .orEmpty()
+                .mapNotNull { segment -> parseSegmentSession(segment, entry, fallbackDuration) }
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
+    private fun parseSegmentSession(
+        obj: JsonObject,
+        entry: RawFitnessEntry,
+        fallbackDuration: Long = 0L,
+    ): SleepSession? {
+        return try {
+            if (!isValidSleepPayload(obj, fallbackDuration)) return null
             val items = obj["items"]?.jsonArray
             val rawStages = items?.map { item ->
                 val stageObj = item.jsonObject
