@@ -7,6 +7,14 @@ expect object AutoSyncPlatform {
     /** Ask the OS to schedule the next opportunistic background refresh. */
     fun scheduleBackgroundRefresh()
 
+    /**
+     * Keep the passport session alive independent of [scheduleBackgroundRefresh].
+     * Runs at most one lightweight stale-check per day and no data sync, so it stays
+     * scheduled even when auto-sync is off — that is what keeps the passToken rotation
+     * chain from dying during weeks without a sync.
+     */
+    fun scheduleSessionRefresh()
+
     /** Cancel any pending opportunistic background refresh. */
     fun cancelBackgroundRefresh()
 

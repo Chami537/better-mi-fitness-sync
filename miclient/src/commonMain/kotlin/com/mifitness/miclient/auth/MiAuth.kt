@@ -663,16 +663,16 @@ class MiAuth(
             // 70016 == XMPassport.RESULT_CODE_AUTHENTICATE_FAILED / ServerErrorCode.ERROR_PASSWORD.
             // The APK maps it to InvalidCredentialException on this path (processLoginContent),
             // and XMPassport.refreshPassToken rejects it too — there is no automatic recovery,
-            // the passToken is dead. Only a fresh sign-in helps.
-            throw MiAuthException(
-                if (code == 70016) {
-                    "Saved Mi session was rejected by Xiaomi (code 70016) — sign in again"
-                } else {
-                    PassportAuthUtils.friendlyLoginError(code, desc)
-                },
-                kind = MiAuthException.Kind.InvalidCredential,
-                businessCode = code,
-            )
+            // the passToken is dead. Only a fresh sign-in helps. Any other code (rate limit
+            // 70022, captcha 87001/81003, …) is transient: the passToken may still be fine, so
+            // report it retryable instead of sending the user to re-login.
+            val kind = PassportAuthUtils.passTokenRefreshFailureKind(code)
+            val message = if (kind == MiAuthException.Kind.InvalidCredential) {
+                "Saved Mi session was rejected by Xiaomi (code 70016) — sign in again"
+            } else {
+                PassportAuthUtils.friendlyLoginError(code, desc)
+            }
+            throw MiAuthException(message, kind = kind, businessCode = code)
         }
         val securityStatus = obj["securityStatus"]?.jsonPrimitive?.int ?: 0
         if (securityStatus != 0) {

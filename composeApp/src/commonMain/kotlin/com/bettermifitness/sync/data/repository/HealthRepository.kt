@@ -15,6 +15,7 @@ import com.bettermifitness.sync.health.HealthStore
 import com.bettermifitness.sync.health.HealthTimePolicy
 import com.mifitness.miclient.api.MiApiException
 import kotlin.time.Clock
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -81,12 +82,12 @@ class HealthRepository(
         field = MutableStateFlow(SyncProgress())
     private val api get() = session.api
 
-    private var authRefreshTried = false
     private var sawAuthFailure = false
     private var lastRefreshUserMessage: String? = null
     private var lastRefreshRetryable: Boolean = false
     private val retryableFailures = mutableListOf<Boolean>()
     private val stateMutex = Mutex()
+    private val sharedRefresh = SharedAuthRefresh { session.refreshSessionDetailed() }
     // Bound concurrent Mi requests so parallel metrics cannot trigger rate limits.
     private val fetchSemaphore = Semaphore(MAX_CONCURRENT_FETCHES)
 
@@ -95,7 +96,7 @@ class HealthRepository(
         to: String,
         enabled: Set<String>,
     ): SyncRunResult {
-        authRefreshTried = false
+        sharedRefresh.reset()
         sawAuthFailure = false
         lastRefreshUserMessage = null
         lastRefreshRetryable = false
@@ -716,62 +717,55 @@ class HealthRepository(
         setState(metric, SyncState.InProgress)
         try {
             setState(metric, SyncState.Success(executeWithAuthRetry(block)))
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             recordFailure(e)
             setState(metric, SyncState.Error(friendlyMessage(e)))
         }
     }
 
+    /**
+     * Runs [block], healing an expired session once per sync run.
+     *
+     * Every metric that observes [MiApiException.AuthExpired] joins the same shared
+     * refresh: on success each of them retries once against the renewed session instead
+     * of only the first failure recovering while the rest report auth errors.
+     */
     private suspend fun executeWithAuthRetry(block: suspend () -> Int): Int {
         return try {
             block()
         } catch (e: MiApiException.AuthExpired) {
-            var shouldRefresh = false
-            stateMutex.withLock {
-                sawAuthFailure = true
-                if (!authRefreshTried) {
-                    authRefreshTried = true
-                    shouldRefresh = true
+            stateMutex.withLock { sawAuthFailure = true }
+            when (val refresh = sharedRefresh.refreshOnce()) {
+                SessionRefreshResult.Success -> {
+                    stateMutex.withLock {
+                        lastRefreshUserMessage = null
+                        lastRefreshRetryable = false
+                    }
+                    return block()
+                }
+                else -> {
+                    noteRefreshOutcome(refresh)
+                    throw e
                 }
             }
-            if (shouldRefresh) {
-                when (val refresh = session.refreshSessionDetailed()) {
-                    SessionRefreshResult.Success -> {
-                        stateMutex.withLock {
-                            lastRefreshUserMessage = null
-                            lastRefreshRetryable = false
-                        }
-                        return block()
-                    }
-                    is SessionRefreshResult.TransientFailure -> {
-                        stateMutex.withLock {
-                            lastRefreshUserMessage = refresh.userMessage
-                            lastRefreshRetryable = true
-                        }
-                    }
-                    is SessionRefreshResult.NeedsReLogin -> {
-                        stateMutex.withLock {
-                            lastRefreshUserMessage = refresh.userMessage
-                            lastRefreshRetryable = false
-                        }
-                    }
-                    is SessionRefreshResult.NeedsVerification -> {
-                        // Include verification URL so UI can open Xiaomi WebView directly,
-                        // matching Mi Fitness behavior where 70016 shows “Verify” link.
-                        val url = refresh.notificationUrl?.takeIf { it.isNotBlank() }
-                        val message = if (url != null) {
-                            "${refresh.reason} — Verify at: $url"
-                        } else {
-                            refresh.userMessage
-                        }
-                        stateMutex.withLock {
-                            lastRefreshUserMessage = message
-                            lastRefreshRetryable = false
-                        }
-                    }
-                }
-            }
-            throw e
+        }
+    }
+
+    private suspend fun noteRefreshOutcome(refresh: SessionRefreshResult) {
+        val message = if (refresh is SessionRefreshResult.NeedsVerification) {
+            // Include verification URL so UI can open Xiaomi WebView directly,
+            // matching Mi Fitness behavior where 70016 shows “Verify” link.
+            val url = refresh.notificationUrl?.takeIf { it.isNotBlank() }
+            if (url != null) "${refresh.reason} — Verify at: $url" else refresh.userMessage
+        } else {
+            refresh.userMessage
+        }
+        val retryable = refresh is SessionRefreshResult.TransientFailure
+        stateMutex.withLock {
+            lastRefreshUserMessage = message
+            lastRefreshRetryable = retryable
         }
     }
 

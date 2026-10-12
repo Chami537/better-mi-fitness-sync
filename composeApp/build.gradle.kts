@@ -15,7 +15,7 @@ kotlin {
         namespace = "com.bettermifitness.sync.shared"
         // API 37 preview platform is android-37.0 (see androidApp note).
         compileSdk {
-            version = release(37) {
+            version = release(36) {
                 minorApiLevel = 0
             }
         }
@@ -27,6 +27,8 @@ kotlin {
         androidResources {
             enable = true
         }
+        // Run commonTest on the JVM (e.g. session-refresh policy tests) without a device.
+        withHostTest {}
     }
 
     // iosX64 dropped: Compose Multiplatform 1.11+ no longer ships iosX64 artifacts.

@@ -37,5 +37,7 @@ object AutoSyncSchedule {
         } else {
             AutoSyncPlatform.cancelBackgroundRefresh()
         }
+        // Independent of the toggle: keeps the login alive during weeks without a sync.
+        AutoSyncPlatform.scheduleSessionRefresh()
     }
 }

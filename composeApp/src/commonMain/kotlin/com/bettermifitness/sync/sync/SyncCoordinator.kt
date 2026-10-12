@@ -105,10 +105,6 @@ class SyncCoordinator(
         resetProgress: Boolean,
         userInitiated: Boolean,
     ): SyncOutcome {
-        if (requireAutoSync && !syncPreferences.autoSync.first()) {
-            return SyncOutcome.Skipped
-        }
-
         val token = credentials.token.first()
         if (token.isNullOrEmpty()) {
             return notLoggedInOrSkipped(userInitiated, requireAutoSync)
@@ -118,10 +114,16 @@ class SyncCoordinator(
             return notLoggedInOrSkipped(userInitiated, requireAutoSync)
         }
 
-        // Roll the passport session forward if it has gone stale, before spending work on
-        // Health permissions and metric fetches. Opportunistic: a failure here is not fatal,
-        // the lazy 401 refresh inside the repository still owns error reporting.
+        // Roll the passport session forward if it has gone stale, before the auto-sync
+        // gate: even a run that ends up Skipped (background tick racing a disabled toggle)
+        // keeps the passToken rotation chain alive for the next real sync. At most one
+        // passport call per day; failures are swallowed here on purpose — the lazy 401
+        // refresh inside the repository still owns error reporting.
         session.refreshSessionIfStale()
+
+        if (requireAutoSync && !syncPreferences.autoSync.first()) {
+            return SyncOutcome.Skipped
+        }
 
         if (!healthAvailability.isAvailable()) {
             return SyncOutcome.HealthUnavailable
