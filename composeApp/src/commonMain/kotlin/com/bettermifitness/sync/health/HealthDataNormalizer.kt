@@ -15,6 +15,7 @@ import com.bettermifitness.sync.data.api.WeightMeasurement
 import com.bettermifitness.sync.data.api.WorkoutRoutePoint
 import com.bettermifitness.sync.data.api.WorkoutSession
 import com.bettermifitness.sync.data.api.WorkoutTimedSample
+import kotlin.math.roundToInt
 
 /**
  * Pure helpers that sanitize Mi fitness payloads before platform health writes.
@@ -24,6 +25,16 @@ import com.bettermifitness.sync.data.api.WorkoutTimedSample
  * sync batch never inserts the same clientRecordId twice.
  */
 object HealthDataNormalizer {
+
+    private const val HOUR_SEC = 3600L
+
+    /**
+     * Floor for buckets reduced by workout-overlap subtraction: keeps the record alive
+     * through normalize (which drops non-positive values) so the corrected value
+     * overwrites previously synced inflated history instead of leaving it stale.
+     */
+    private const val MIN_ADJUSTED_STEPS = 1
+    private const val MIN_ADJUSTED_VALUE = 0.01
 
     /** Mi sometimes returns ms; HealthKit/HC expect seconds. */
     fun toEpochSeconds(raw: Long): Long {
@@ -83,6 +94,7 @@ object HealthDataNormalizer {
                 distance = r.distance,
                 calories = r.calories,
                 tzIn15Min = r.tzIn15Min,
+                workoutAdjusted = r.workoutAdjusted,
             )
         }
             .sortedBy { it.date.toLong() }
@@ -90,6 +102,120 @@ object HealthDataNormalizer {
             .groupBy { it.date }
             .map { (_, group) -> group.maxBy { it.steps } }
             .sortedBy { it.date.toLong() }
+    }
+
+    /**
+     * Mi's per-minute `steps` stream already contains workout-period steps, while each
+     * workout also carries its own `totalSteps`, written as a separate record over the
+     * session window. Health platforms sum both, so workout days read high (issue #51).
+     * Subtract each session's steps from the hour buckets it overlaps (split
+     * proportionally to overlapped seconds). Per-workout records are untouched, so no
+     * workout detail is lost and hourly + workout totals equal the Mi total.
+     */
+    fun subtractWorkoutSteps(
+        records: List<StepsRecord>,
+        workouts: List<WorkoutSession>,
+    ): List<StepsRecord> {
+        if (records.isEmpty() || workouts.isEmpty()) return records
+        val buckets = OverlapBuckets(
+            starts = LongArray(records.size) { i ->
+                records[i].date.toLongOrNull()?.let { toEpochSeconds(it) } ?: 0L
+            },
+            values = DoubleArray(records.size) { i -> records[i].steps.toDouble() },
+        )
+        allocateWorkoutOverlap(buckets, workouts) { it.totalSteps?.toDouble() }
+        return records.mapIndexed { i, r ->
+            if (!buckets.adjusted[i]) {
+                r
+            } else {
+                r.copy(
+                    steps = buckets.values[i].roundToInt().coerceAtLeast(MIN_ADJUSTED_STEPS),
+                    workoutAdjusted = true,
+                )
+            }
+        }
+    }
+
+    /**
+     * Same overlap correction as [subtractWorkoutSteps] for hourly distance, which rides
+     * on the same per-minute stream and overlaps per-workout `DistanceRecord`s.
+     */
+    fun subtractWorkoutDistance(
+        samples: List<DistanceSample>,
+        workouts: List<WorkoutSession>,
+    ): List<DistanceSample> {
+        if (samples.isEmpty() || workouts.isEmpty()) return samples
+        val buckets = OverlapBuckets(
+            starts = LongArray(samples.size) { i -> toEpochSeconds(samples[i].startTime) },
+            ends = LongArray(samples.size) { i -> toEpochSeconds(samples[i].endTime) + 1 },
+            values = DoubleArray(samples.size) { i -> samples[i].meters },
+        )
+        allocateWorkoutOverlap(buckets, workouts) { it.distanceMeters }
+        return samples.mapIndexed { i, s ->
+            if (!buckets.adjusted[i]) {
+                s
+            } else {
+                s.copy(
+                    meters = buckets.values[i].coerceAtLeast(MIN_ADJUSTED_VALUE),
+                    workoutAdjusted = true,
+                )
+            }
+        }
+    }
+
+    /**
+     * Same overlap correction as [subtractWorkoutSteps] for hourly active calories,
+     * which overlap per-workout `ActiveCaloriesBurnedRecord`s.
+     */
+    fun subtractWorkoutCalories(
+        samples: List<ActiveCaloriesSample>,
+        workouts: List<WorkoutSession>,
+    ): List<ActiveCaloriesSample> {
+        if (samples.isEmpty() || workouts.isEmpty()) return samples
+        val buckets = OverlapBuckets(
+            starts = LongArray(samples.size) { i -> toEpochSeconds(samples[i].startTime) },
+            ends = LongArray(samples.size) { i -> toEpochSeconds(samples[i].endTime) + 1 },
+            values = DoubleArray(samples.size) { i -> samples[i].kilocalories },
+        )
+        allocateWorkoutOverlap(buckets, workouts) { it.caloriesKcal }
+        return samples.mapIndexed { i, s ->
+            if (!buckets.adjusted[i]) {
+                s
+            } else {
+                s.copy(
+                    kilocalories = buckets.values[i].coerceAtLeast(MIN_ADJUSTED_VALUE),
+                    workoutAdjusted = true,
+                )
+            }
+        }
+    }
+
+    /** Hour-bucket intervals for steps default to `[start, start + 3600)`. */
+    private class OverlapBuckets(
+        val starts: LongArray,
+        val ends: LongArray = LongArray(starts.size) { i -> starts[i] + HOUR_SEC },
+        val values: DoubleArray,
+        val adjusted: BooleanArray = BooleanArray(starts.size),
+    )
+
+    private fun allocateWorkoutOverlap(
+        buckets: OverlapBuckets,
+        workouts: List<WorkoutSession>,
+        amountOf: (WorkoutSession) -> Double?,
+    ) {
+        for (w in workouts) {
+            val amount = amountOf(w)?.takeIf { it > 0 } ?: continue
+            val start = toEpochSeconds(w.startTime)
+            val end = toEpochSeconds(w.endTime)
+            if (end <= start) continue
+            val duration = (end - start).toDouble()
+            for (i in buckets.starts.indices) {
+                val overlap = minOf(end, buckets.ends[i]) - maxOf(start, buckets.starts[i])
+                if (overlap <= 0) continue
+                buckets.values[i] -= amount * overlap / duration
+                buckets.adjusted[i] = true
+            }
+        }
     }
 
     fun normalizeSleep(
@@ -229,6 +355,7 @@ object HealthDataNormalizer {
                 endTime = clamped.second,
                 meters = s.meters,
                 tzIn15Min = s.tzIn15Min,
+                workoutAdjusted = s.workoutAdjusted,
             )
         }
             .sortedBy { it.startTime }
@@ -251,6 +378,7 @@ object HealthDataNormalizer {
                 endTime = clamped.second,
                 kilocalories = s.kilocalories,
                 tzIn15Min = s.tzIn15Min,
+                workoutAdjusted = s.workoutAdjusted,
             )
         }
             .sortedBy { it.startTime }

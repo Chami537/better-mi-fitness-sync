@@ -49,6 +49,7 @@ import com.bettermifitness.sync.data.api.Vo2MaxSample
 import com.bettermifitness.sync.data.api.WeightMeasurement
 import com.bettermifitness.sync.data.api.WorkoutSession
 import java.time.Instant
+import kotlin.math.roundToLong
 
 actual class HealthWriter(private val context: Context) : HealthStore {
     private val client by lazy { HealthConnectClient.getOrCreate(context) }
@@ -236,7 +237,10 @@ actual class HealthWriter(private val context: Context) : HealthStore {
                 metadata = Metadata.manualEntry(
                     clientRecordId = HealthRecordIds.steps(ts),
                     // Higher step counts during the day should replace earlier partial buckets.
-                    clientRecordVersion = HealthRecordIds.counterVersion(record.steps.toLong(), ts),
+                    // Workout-adjusted buckets carry a bump so the (lower) corrected value
+                    // still overwrites previously synced inflated history (issue #51).
+                    clientRecordVersion = HealthRecordIds.counterVersion(record.steps.toLong(), ts) +
+                        if (record.workoutAdjusted) HealthRecordIds.WORKOUT_ADJUSTMENT_VERSION_BUMP else 0L,
                 ),
             )
         }
@@ -257,12 +261,12 @@ actual class HealthWriter(private val context: Context) : HealthStore {
                 distance = Length.meters(s.meters),
                 metadata = Metadata.manualEntry(
                     clientRecordId = HealthRecordIds.distance(s.startTime),
-                    clientRecordVersion = HealthRecordIds.version(
+                    // Counter-based so mid-day growth still wins; adjusted buckets carry a
+                    // bump so the correction overwrites inflated history (issue #51).
+                    clientRecordVersion = HealthRecordIds.counterVersion(
+                        (s.meters * 1000).roundToLong(),
                         s.startTime,
-                        s.endTime,
-                        s.meters,
-                        s.tzIn15Min,
-                    ),
+                    ) + if (s.workoutAdjusted) HealthRecordIds.WORKOUT_ADJUSTMENT_VERSION_BUMP else 0L,
                 ),
             )
         }
@@ -283,12 +287,12 @@ actual class HealthWriter(private val context: Context) : HealthStore {
                 energy = Energy.kilocalories(s.kilocalories),
                 metadata = Metadata.manualEntry(
                     clientRecordId = HealthRecordIds.activeCalories(s.startTime),
-                    clientRecordVersion = HealthRecordIds.version(
+                    // Counter-based so mid-day growth still wins; adjusted buckets carry a
+                    // bump so the correction overwrites inflated history (issue #51).
+                    clientRecordVersion = HealthRecordIds.counterVersion(
+                        (s.kilocalories * 1000).roundToLong(),
                         s.startTime,
-                        s.endTime,
-                        s.kilocalories,
-                        s.tzIn15Min,
-                    ),
+                    ) + if (s.workoutAdjusted) HealthRecordIds.WORKOUT_ADJUSTMENT_VERSION_BUMP else 0L,
                 ),
             )
         }
