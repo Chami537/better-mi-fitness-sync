@@ -14,8 +14,9 @@ kotlin {
     android {
         namespace = "com.bettermifitness.sync.shared"
         // API 37 preview platform is android-37.0 (see androidApp note).
+        // Must stay at 37+: coil3 3.6.x AAR metadata requires compileSdk 37 or later.
         compileSdk {
-            version = release(36) {
+            version = release(37) {
                 minorApiLevel = 0
             }
         }
