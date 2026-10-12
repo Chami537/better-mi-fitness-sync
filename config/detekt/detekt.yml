@@ -5,8 +5,12 @@ complexity:
   LargeClass:
     active: true
     # HealthRepository is a metric orchestrator by design (one function per metric).
+    # Test classes grow with coverage by design; class-size limits don't apply to them.
     excludes:
       - '**/data/repository/HealthRepository.kt'
+      - '**/commonTest/**'
+      - '**/androidTest/**'
+      - '**/iosTest/**'
   LongMethod:
     active: true
     # Compose UI screens are naturally long declarative trees.

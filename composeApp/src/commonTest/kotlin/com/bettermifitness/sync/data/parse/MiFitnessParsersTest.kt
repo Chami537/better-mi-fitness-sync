@@ -278,15 +278,21 @@ class MiFitnessParsersTest {
             time = 1_700_003_600L,
             value = """
                 {
-                  "bedtime": 1700000000,
-                  "wake_up_time": 1700036000,
-                  "bed_timestamp": 1699999900,
-                  "out_bed_timestamp": 1700036100,
-                  "sleep_awake_duration": 0,
-                  "timezone": 32,
-                  "items": [
-                    {"start_time": 1700000000, "end_time": 1700018000, "state": 2},
-                    {"start_time": 1700018000, "end_time": 1700036000, "state": 3}
+                  "total_duration": 600,
+                  "sleep_score": 76,
+                  "segment_details": [
+                    {
+                      "bedtime": 1700000000,
+                      "wake_up_time": 1700036000,
+                      "bed_timestamp": 1699999900,
+                      "out_bed_timestamp": 1700036100,
+                      "sleep_awake_duration": 0,
+                      "timezone": 32,
+                      "items": [
+                        {"start_time": 1700000000, "end_time": 1700018000, "state": 2},
+                        {"start_time": 1700018000, "end_time": 1700036000, "state": 3}
+                      ]
+                    }
                   ]
                 }
             """.trimIndent(),
@@ -308,14 +314,19 @@ class MiFitnessParsersTest {
             time = 1_700_003_600L,
             value = """
                 {
-                  "bedtime": 1700000000,
-                  "wake_up_time": 1700036000,
-                  "avg_hrv": 42,
-                  "min_hrv": 28,
-                  "max_hrv": 65,
-                  "hrv_analysis_timestamp": 1700035000,
-                  "items": [
-                    {"start_time": 1700000000, "end_time": 1700036000, "state": 2}
+                  "total_duration": 600,
+                  "segment_details": [
+                    {
+                      "bedtime": 1700000000,
+                      "wake_up_time": 1700036000,
+                      "avg_hrv": 42,
+                      "min_hrv": 28,
+                      "max_hrv": 65,
+                      "hrv_analysis_timestamp": 1700035000,
+                      "items": [
+                        {"start_time": 1700000000, "end_time": 1700036000, "state": 2}
+                      ]
+                    }
                   ]
                 }
             """.trimIndent(),
@@ -340,9 +351,14 @@ class MiFitnessParsersTest {
             time = 1_700_003_600L,
             value = """
                 {
-                  "bedtime": 1700000000,
-                  "wake_up_time": 1700036000,
-                  "items": []
+                  "total_duration": 600,
+                  "segment_details": [
+                    {
+                      "bedtime": 1700000000,
+                      "wake_up_time": 1700036000,
+                      "items": []
+                    }
+                  ]
                 }
             """.trimIndent(),
         )
@@ -357,10 +373,15 @@ class MiFitnessParsersTest {
             time = 1_700_003_600L,
             value = """
                 {
-                  "bedtime": 1700000000,
-                  "wake_up_time": 1700036000,
-                  "avg_hrv": 55,
-                  "items": []
+                  "total_duration": 600,
+                  "segment_details": [
+                    {
+                      "bedtime": 1700000000,
+                      "wake_up_time": 1700036000,
+                      "avg_hrv": 55,
+                      "items": []
+                    }
+                  ]
                 }
             """.trimIndent(),
         )
@@ -377,10 +398,15 @@ class MiFitnessParsersTest {
             time = 1_700_003_600L,
             value = """
                 {
-                  "bedtime": 1700000000,
-                  "wake_up_time": 1700036000,
-                  "avg_hrv": 999,
-                  "items": []
+                  "total_duration": 600,
+                  "segment_details": [
+                    {
+                      "bedtime": 1700000000,
+                      "wake_up_time": 1700036000,
+                      "avg_hrv": 999,
+                      "items": []
+                    }
+                  ]
                 }
             """.trimIndent(),
         )
@@ -394,10 +420,15 @@ class MiFitnessParsersTest {
             time = 1_700_003_600L,
             value = """
                 {
-                  "bedtime": 1700000000,
-                  "wake_up_time": 1700036000,
-                  "items": [
-                    {"start_time": 1700000000, "end_time": 1700036000, "state": 2}
+                  "total_duration": 600,
+                  "segment_details": [
+                    {
+                      "bedtime": 1700000000,
+                      "wake_up_time": 1700036000,
+                      "items": [
+                        {"start_time": 1700000000, "end_time": 1700036000, "state": 2}
+                      ]
+                    }
                   ]
                 }
             """.trimIndent(),
@@ -414,16 +445,21 @@ class MiFitnessParsersTest {
             time = 1_700_003_600L,
             value = """
                 {
-                  "bedtime": 1700000000,
-                  "wake_up_time": 1700036000,
-                  "duration": 21600,
-                  "sleep_deep_duration": 3600,
-                  "sleep_light_duration": 14400,
-                  "sleep_rem_duration": 3600,
-                  "timezone": 32,
-                  "items": [
-                    {"start_time": 1700000000, "end_time": 1700018000, "state": 2},
-                    {"start_time": 1700018000, "end_time": 1700036000, "state": 3}
+                  "total_duration": 600,
+                  "segment_details": [
+                    {
+                      "bedtime": 1700000000,
+                      "wake_up_time": 1700036000,
+                      "duration": 21600,
+                      "sleep_deep_duration": 3600,
+                      "sleep_light_duration": 14400,
+                      "sleep_rem_duration": 3600,
+                      "timezone": 32,
+                      "items": [
+                        {"start_time": 1700000000, "end_time": 1700018000, "state": 2},
+                        {"start_time": 1700018000, "end_time": 1700036000, "state": 3}
+                      ]
+                    }
                   ]
                 }
             """.trimIndent(),
@@ -442,12 +478,17 @@ class MiFitnessParsersTest {
             time = 1_700_003_600L,
             value = """
                 {
-                  "bedtime": 1700000000,
-                  "wake_up_time": 1700003600,
-                  "duration": 3600,
-                  "timezone": 32,
-                  "items": [
-                    {"start_time": 1700000000, "end_time": 1700003600, "state": 3}
+                  "total_duration": 60,
+                  "segment_details": [
+                    {
+                      "bedtime": 1700000000,
+                      "wake_up_time": 1700003600,
+                      "duration": 3600,
+                      "timezone": 32,
+                      "items": [
+                        {"start_time": 1700000000, "end_time": 1700003600, "state": 3}
+                      ]
+                    }
                   ]
                 }
             """.trimIndent(),
@@ -473,6 +514,84 @@ class MiFitnessParsersTest {
             """.trimIndent(),
         )
         assertTrue(MiFitnessParsers.parseSleepSessions(listOf(entry)).isEmpty())
+    }
+
+    @Test
+    fun parseSleepSessions_multiSegmentDay_returnsOneSessionPerSegment() {
+        val entry = RawFitnessEntry(
+            key = "sleep",
+            time = 1_700_003_600L,
+            value = """
+                {
+                  "total_duration": 660,
+                  "sleep_score": 76,
+                  "segment_details": [
+                    {
+                      "bedtime": 1700000000,
+                      "wake_up_time": 1700036000,
+                      "timezone": 32,
+                      "items": [
+                        {"start_time": 1700000000, "end_time": 1700036000, "state": 2}
+                      ]
+                    },
+                    {
+                      "bedtime": 1700040000,
+                      "wake_up_time": 1700043600,
+                      "timezone": 32,
+                      "items": [
+                        {"start_time": 1700040000, "end_time": 1700043600, "state": 3}
+                      ]
+                    }
+                  ]
+                }
+            """.trimIndent(),
+        )
+        val sessions = MiFitnessParsers.parseSleepSessions(listOf(entry))
+        assertEquals(2, sessions.size)
+        assertEquals(1_700_000_000L, sessions[0].startTime)
+        assertEquals(1_700_036_000L, sessions[0].endTime)
+        assertEquals(1_700_040_000L, sessions[1].startTime)
+        assertEquals(1_700_043_600L, sessions[1].endTime)
+    }
+
+    @Test
+    fun parseSleepSession_envelopeWithoutSegments_returnsNull() {
+        val empty = RawFitnessEntry(
+            key = "sleep",
+            time = 1_700_003_600L,
+            value = """{"total_duration": 0, "segment_details": []}""",
+        )
+        assertEquals(null, MiFitnessParsers.parseSleepSession(empty))
+        val bare = RawFitnessEntry(
+            key = "sleep",
+            time = 1_700_003_600L,
+            value = """{"sleep_score": 76}""",
+        )
+        assertEquals(null, MiFitnessParsers.parseSleepSession(bare))
+    }
+
+    @Test
+    fun parseSleepSessions_totalDurationAlias_acceptsSegmentWithoutDuration() {
+        val entry = RawFitnessEntry(
+            key = "sleep",
+            time = 1_700_003_600L,
+            value = """
+                {
+                  "total_duration": 18000,
+                  "segment_details": [
+                    {
+                      "bedtime": 1700000000,
+                      "wake_up_time": 1700000000,
+                      "items": [
+                        {"start_time": 1700000000, "end_time": 1700003600, "state": 3}
+                      ]
+                    }
+                  ]
+                }
+            """.trimIndent(),
+        )
+        val sessions = MiFitnessParsers.parseSleepSessions(listOf(entry))
+        assertEquals(1, sessions.size)
     }
 
     @Test
