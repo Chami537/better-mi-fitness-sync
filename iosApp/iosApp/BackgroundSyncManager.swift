@@ -42,6 +42,7 @@ enum BackgroundSyncManager {
 
         AutoSyncBridge.shared.setHandlers(
             onSchedule: { schedule() },
+            onScheduleRefresh: { scheduleRefresh() },
             onCancel: { cancel() },
             statusProvider: { backgroundRefreshStatusLabel() },
             supportsDebugTest: { KotlinBoolean(bool: isDebugRefreshEnabled) }
@@ -94,6 +95,21 @@ enum BackgroundSyncManager {
         BGTaskScheduler.shared.cancel(taskRequestWithIdentifier: taskIdentifier)
         BGTaskScheduler.shared.cancel(taskRequestWithIdentifier: processingIdentifier)
         print("[BGSync] cancelled \(taskIdentifier) + \(processingIdentifier)")
+    }
+
+    /// Keeps a lightweight keepalive tick scheduled even when data sync is off.
+    /// The handler rolls the passport session forward (no data sync), which is what
+    /// keeps the login alive during weeks without a sync.
+    static func scheduleRefresh() {
+        BGTaskScheduler.shared.cancel(taskRequestWithIdentifier: taskIdentifier)
+        let refresh = BGAppRefreshTaskRequest(identifier: taskIdentifier)
+        refresh.earliestBeginDate = Date(timeIntervalSinceNow: 12 * 60 * 60)
+        do {
+            try BGTaskScheduler.shared.submit(refresh)
+            print("[BGSync] scheduled keepalive \(taskIdentifier)")
+        } catch {
+            print("[BGSync] keepalive schedule failed: \(error)")
+        }
     }
 
     /// Debug/simulator-only diagnostic. The OS permission does not indicate this app's Auto-sync state.
@@ -149,7 +165,8 @@ enum BackgroundSyncManager {
     }
 
     private static func handle(task: BGAppRefreshTask) {
-        // Line up the next run only if Auto-sync is still enabled.
+        // Keepalive chain always continues; the data-sync chain only when enabled.
+        scheduleRefresh()
         AutoSyncSchedule.shared.rescheduleIfEnabled()
 
         var finished = false
@@ -165,19 +182,23 @@ enum BackgroundSyncManager {
             finish(success: false)
         }
 
-        // Last 1 day only — see BackgroundSync.runOpportunisticBackgroundSync
-        BackgroundSync.shared.runOpportunisticBackgroundSync { status in
-            let code = (status as? String) ?? BackgroundSync.shared.STATUS_FAILED
-            // success or quiet skip both count as a completed task for the OS
-            let ok = code == BackgroundSync.shared.STATUS_SUCCESS
-                || code == BackgroundSync.shared.STATUS_SKIPPED
-            print("[BGSync] opportunistic sync finished status=\(code)")
-            finish(success: ok)
+        // Session first (cheap, keeps the login alive), then data when enabled.
+        BackgroundSync.shared.runSessionRefresh { _ in
+            // Last 1 day only — see BackgroundSync.runOpportunisticBackgroundSync
+            BackgroundSync.shared.runOpportunisticBackgroundSync { status in
+                let code = (status as? String) ?? BackgroundSync.shared.STATUS_FAILED
+                // success or quiet skip both count as a completed task for the OS
+                let ok = code == BackgroundSync.shared.STATUS_SUCCESS
+                    || code == BackgroundSync.shared.STATUS_SKIPPED
+                print("[BGSync] opportunistic sync finished status=\(code)")
+                finish(success: ok)
+            }
         }
     }
 
     private static func handleProcessing(task: BGProcessingTask) {
-        // Line up the next run only if Auto-sync is still enabled.
+        // Keepalive chain always continues; the data-sync chain only when enabled.
+        scheduleRefresh()
         AutoSyncSchedule.shared.rescheduleIfEnabled()
 
         var finished = false
@@ -193,13 +214,16 @@ enum BackgroundSyncManager {
             finish(success: false)
         }
 
+        // Session first (cheap, keeps the login alive), then data when enabled.
         // Same 1-day path as BGAppRefresh; processing just gets minutes of budget.
-        BackgroundSync.shared.runOpportunisticBackgroundSync { status in
-            let code = (status as? String) ?? BackgroundSync.shared.STATUS_FAILED
-            let ok = code == BackgroundSync.shared.STATUS_SUCCESS
-                || code == BackgroundSync.shared.STATUS_SKIPPED
-            print("[BGSync] processing sync finished status=\(code)")
-            finish(success: ok)
+        BackgroundSync.shared.runSessionRefresh { _ in
+            BackgroundSync.shared.runOpportunisticBackgroundSync { status in
+                let code = (status as? String) ?? BackgroundSync.shared.STATUS_FAILED
+                let ok = code == BackgroundSync.shared.STATUS_SUCCESS
+                    || code == BackgroundSync.shared.STATUS_SKIPPED
+                print("[BGSync] processing sync finished status=\(code)")
+                finish(success: ok)
+            }
         }
     }
 }

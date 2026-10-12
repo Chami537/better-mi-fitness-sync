@@ -53,6 +53,18 @@ object PassportAuthUtils {
         return "${parts[0].take(3)}***@${parts[1]}"
     }
 
+    /**
+     * Classifies a non-zero passToken-refresh `serviceLogin` code.
+     *
+     * Only 70016 (authenticate failed) means the passToken is dead and only a fresh
+     * sign-in helps — the APK maps it to InvalidCredentialException with no recovery.
+     * Anything else (rate limit 70022, captcha 87001/81003, …) is transient: the stored
+     * passToken may still be fine, so it must stay retryable instead of logging the
+     * user out.
+     */
+    fun passTokenRefreshFailureKind(code: Int): MiAuthException.Kind =
+        if (code == 70016) MiAuthException.Kind.InvalidCredential else MiAuthException.Kind.StsFailed
+
     fun friendlyLoginError(code: Int, desc: String): String = when (code) {
         70016 -> "Incorrect email or password, or too many attempts. Wait a few minutes and try again."
         70022 -> "Login rate-limited by Xiaomi. Wait a few minutes, or use browser login."

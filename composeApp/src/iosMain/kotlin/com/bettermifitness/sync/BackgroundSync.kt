@@ -1,5 +1,6 @@
 package com.bettermifitness.sync
 
+import com.bettermifitness.sync.data.MiSessionManager
 import com.bettermifitness.sync.sync.SyncCoordinator
 import com.bettermifitness.sync.sync.SyncOutcome
 import kotlinx.coroutines.CancellationException
@@ -72,6 +73,31 @@ object BackgroundSync {
     fun runAutoSync(completion: (Boolean) -> Unit) {
         runForegroundAutoSync { status ->
             completion(status == STATUS_SUCCESS || status == STATUS_SKIPPED)
+        }
+    }
+
+    /**
+     * Session keepalive for BGTaskScheduler ticks: rolls the passport session forward
+     * when stale and syncs nothing. Called from Swift handlers before the data sync so
+     * the login survives weeks without a sync, even with auto-sync off.
+     */
+    fun runSessionRefresh(completion: (String) -> Unit) {
+        scope.launch {
+            val status = try {
+                doInitKoin()
+                val session = KoinPlatform.getKoin().get<MiSessionManager>()
+                if (!session.ensureActive()) {
+                    STATUS_NOT_LOGGED_IN
+                } else {
+                    session.refreshSessionIfStale()
+                    STATUS_SUCCESS
+                }
+            } catch (_: CancellationException) {
+                STATUS_CANCELLED
+            } catch (_: Exception) {
+                STATUS_FAILED
+            }
+            completion(status)
         }
     }
 

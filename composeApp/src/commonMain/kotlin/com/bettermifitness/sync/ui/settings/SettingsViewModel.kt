@@ -195,6 +195,8 @@ class SettingsViewModel(
                 AutoSyncPlatform.scheduleBackgroundRefresh()
             } else {
                 AutoSyncPlatform.cancelBackgroundRefresh()
+                // Staying logged in must not depend on the data-sync toggle.
+                AutoSyncPlatform.scheduleSessionRefresh()
             }
         }
     }

@@ -9,6 +9,10 @@ actual object AutoSyncPlatform {
         AutoSyncBridge.invokeSchedule()
     }
 
+    actual fun scheduleSessionRefresh() {
+        AutoSyncBridge.invokeScheduleRefresh()
+    }
+
     actual fun cancelBackgroundRefresh() {
         AutoSyncBridge.invokeCancel()
     }
@@ -38,17 +42,20 @@ actual object AutoSyncPlatform {
  */
 object AutoSyncBridge {
     private var onSchedule: (() -> Unit)? = null
+    private var onScheduleRefresh: (() -> Unit)? = null
     private var onCancel: (() -> Unit)? = null
     private var statusProvider: (() -> String)? = null
     private var supportsDebugTest: (() -> Boolean)? = null
 
     fun setHandlers(
         onSchedule: (() -> Unit)?,
+        onScheduleRefresh: (() -> Unit)?,
         onCancel: (() -> Unit)?,
         statusProvider: (() -> String)?,
         supportsDebugTest: (() -> Boolean)?,
     ) {
         this.onSchedule = onSchedule
+        this.onScheduleRefresh = onScheduleRefresh
         this.onCancel = onCancel
         this.statusProvider = statusProvider
         this.supportsDebugTest = supportsDebugTest
@@ -56,6 +63,10 @@ object AutoSyncBridge {
 
     fun invokeSchedule() {
         onSchedule?.invoke()
+    }
+
+    fun invokeScheduleRefresh() {
+        onScheduleRefresh?.invoke()
     }
 
     fun invokeCancel() {

@@ -36,6 +36,27 @@ class PassportAuthUtilsTest {
     }
 
     @Test
+    fun passTokenRefreshFailureKind_deadTokenNeedsReLogin() {
+        assertEquals(
+            MiAuthException.Kind.InvalidCredential,
+            PassportAuthUtils.passTokenRefreshFailureKind(70016),
+        )
+    }
+
+    @Test
+    fun passTokenRefreshFailureKind_transientCodesStayRetryable() {
+        // Rate limit, captcha gates, unknown codes: the stored passToken may still be
+        // fine, so these must surface as retryable STS failures, never re-login.
+        for (code in listOf(70022, 87001, 81003, 0, -1, 99999)) {
+            assertEquals(
+                MiAuthException.Kind.StsFailed,
+                PassportAuthUtils.passTokenRefreshFailureKind(code),
+                "code $code",
+            )
+        }
+    }
+
+    @Test
     fun inferMaskedEmail_masksLocalPart() {
         assertEquals("tes***@example.com", PassportAuthUtils.inferMaskedEmail("test@example.com"))
         assertEquals("ab@x.com", PassportAuthUtils.inferMaskedEmail("ab@x.com"))

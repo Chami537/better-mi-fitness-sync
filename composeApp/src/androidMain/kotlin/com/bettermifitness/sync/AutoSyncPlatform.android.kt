@@ -9,6 +9,7 @@ import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.NetworkType
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
+import androidx.work.workDataOf
 import com.bettermifitness.sync.i18n.L10n
 import com.bettermifitness.sync.sync.MiSyncWorker
 import java.util.concurrent.TimeUnit
@@ -43,10 +44,33 @@ actual object AutoSyncPlatform {
             ExistingPeriodicWorkPolicy.UPDATE,
             request,
         )
+        // Data syncs already roll the session forward, but the keepalive must also exist
+        // on its own so the toggle-off path is covered.
+        scheduleSessionRefresh()
+    }
+
+    actual fun scheduleSessionRefresh() {
+        val ctx = requireContext()
+        val constraints = Constraints.Builder()
+            .setRequiredNetworkType(NetworkType.CONNECTED)
+            .build()
+        // Twice daily: comfortably inside the 1-day stale threshold even when the OS
+        // defers a tick, yet a single tiny passport call at most once per day.
+        val request = PeriodicWorkRequestBuilder<MiSyncWorker>(12, TimeUnit.HOURS)
+            .setConstraints(constraints)
+            .setInputData(workDataOf(MiSyncWorker.KEY_REFRESH_ONLY to true))
+            .build()
+        WorkManager.getInstance(ctx).enqueueUniquePeriodicWork(
+            MiSyncWorker.UNIQUE_REFRESH_NAME,
+            ExistingPeriodicWorkPolicy.KEEP,
+            request,
+        )
     }
 
     actual fun cancelBackgroundRefresh() {
         if (!::appContext.isInitialized) return
+        // Only the data-sync work is cancelled: the session-refresh keepalive uses a
+        // separate unique name and intentionally survives so logins outlive the toggle.
         WorkManager.getInstance(appContext).cancelUniqueWork(MiSyncWorker.UNIQUE_WORK_NAME)
     }
 

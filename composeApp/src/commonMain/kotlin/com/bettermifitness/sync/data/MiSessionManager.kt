@@ -10,6 +10,7 @@ import com.mifitness.miclient.auth.MiCredentials
 import kotlin.time.Clock
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.days
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -108,6 +109,8 @@ class MiSessionManager(
                 MiAuthException.Kind.Generic,
                 -> SessionRefreshResult.TransientFailure(e.message ?: "Session refresh failed")
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             SessionRefreshResult.TransientFailure(
                 e.message?.takeIf { it.isNotBlank() } ?: (e::class.simpleName ?: "Refresh error"),

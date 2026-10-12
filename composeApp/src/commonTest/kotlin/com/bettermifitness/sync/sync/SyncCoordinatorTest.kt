@@ -27,10 +27,11 @@ import kotlinx.coroutines.runBlocking
 class SyncCoordinatorTest {
 
     @Test
-    fun requireAutoSync_whenDisabled_skipsWithoutTouchingPrefs() = runBlocking {
+    fun requireAutoSync_whenDisabled_skipsDataSyncButStillRollsSession() = runBlocking {
         val prefs = FakePrefs(autoSync = false)
         prefs.lastStatus = SyncOutcome.STATUS_SUCCESS
-        val outcome = coordinator(prefs = prefs, token = "t").run(
+        val session = FakeSession(true)
+        val outcome = coordinator(prefs = prefs, token = "t", session = session).run(
             requireAutoSync = true,
             requestHealthPermissions = false,
             userInitiated = false,
@@ -40,6 +41,9 @@ class SyncCoordinatorTest {
         // a no-op run must leave the manual Success result alone.
         assertEquals(SyncOutcome.STATUS_SUCCESS, prefs.lastStatus)
         assertEquals(null, prefs.lastBgStatus)
+        // …but the passport session is still rolled forward so the login outlives
+        // weeks without a data sync.
+        assertEquals(1, session.staleRefreshes)
     }
 
     @Test
