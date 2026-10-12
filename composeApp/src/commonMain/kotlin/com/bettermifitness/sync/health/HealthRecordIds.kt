@@ -15,6 +15,15 @@ object HealthRecordIds {
     /** 5-minute windows for batched HR series on Android. */
     const val HEART_RATE_WINDOW_SEC = 5 * 60L
 
+    /**
+     * Added to hourly steps/distance/calorie record versions whose values were reduced
+     * by workout-overlap subtraction (issue #51). Platforms keep the highest-versioned
+     * record per id, and corrected values are always lower than the inflated ones they
+     * replace — without the bump the correction would lose. 1e12 exceeds any
+     * counterVersion reachable under the normalizer caps (200k steps * 1e6).
+     */
+    const val WORKOUT_ADJUSTMENT_VERSION_BUMP = 1_000_000_000_000L
+
     fun heartRateWindow(windowStartEpochSec: Long): String =
         "mifit-hr-$windowStartEpochSec"
 

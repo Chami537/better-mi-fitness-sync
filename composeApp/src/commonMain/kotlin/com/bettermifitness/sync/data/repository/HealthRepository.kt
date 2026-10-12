@@ -121,6 +121,23 @@ class HealthRepository(
                     fetchSemaphore.withPermit { fetchAllByTime("steps", from, to) }
                 }
             } else null
+            // Workouts parsed once for the steps/distance/calories overlap correction
+            // (issue #51): the hourly streams already contain workout-period values.
+            // Isolated failure: a fetch error only skips the correction, and the
+            // workouts metric still fetches independently below.
+            val overlapWorkouts = if ("workouts" in enabled &&
+                ("steps" in enabled || "distance" in enabled || "active_calories" in enabled)
+            ) {
+                async {
+                    try {
+                        fetchSemaphore.withPermit {
+                            MiFitnessParsers.parseWorkouts(api.getSportRecordsByTime(from, to))
+                        }
+                    } catch (_: Exception) {
+                        emptyList()
+                    }
+                }
+            } else null
             // HR rows (continuous plus manual spot checks) fetched once, shared with workouts.
             val hrRows = if ("heart_rate" in enabled || "workouts" in enabled) {
                 async {
@@ -166,13 +183,13 @@ class HealthRepository(
                 async { syncHrv(sleepRows!!) }
             } else null
             val steps = if ("steps" in enabled) {
-                async { syncSteps(stepsRows!!) }
+                async { syncSteps(stepsRows!!, overlapWorkouts) }
             } else null
             val distance = if ("distance" in enabled) {
-                async { syncDistance(stepsRows!!) }
+                async { syncDistance(stepsRows!!, overlapWorkouts) }
             } else null
             val calories = if ("active_calories" in enabled) {
-                async { syncActiveCalories(from, to) }
+                async { syncActiveCalories(from, to, overlapWorkouts) }
             } else null
             val spo2 = if ("spo2" in enabled) {
                 async { syncSpO2(from, to) }
@@ -209,6 +226,7 @@ class HealthRepository(
             ).forEach { it.await() }
             sleepRows?.await()
             stepsRows?.await()
+            overlapWorkouts?.await()
             hrRows?.await()
             hrManualRows?.await()
             hrManualLatest?.await()
@@ -334,13 +352,20 @@ class HealthRepository(
 
     private suspend fun syncSteps(
         stepsRows: kotlinx.coroutines.Deferred<List<HeartRateEntry>>,
+        overlapWorkouts: kotlinx.coroutines.Deferred<List<WorkoutSession>>? = null,
     ) {
         runMetric("steps") {
             val records = MiFitnessParsers.parseHourlySteps(
                 stepsRows.await().map { it.toRaw() },
             )
-            if (records.isNotEmpty()) healthWriter.writeSteps(records)
-            records.size
+            // Hourly stream already contains workout-period steps; subtract the overlap
+            // so Health totals don't double-count the per-workout step records (issue #51).
+            val adjusted = HealthDataNormalizer.subtractWorkoutSteps(
+                records,
+                overlapWorkouts?.await().orEmpty(),
+            )
+            if (adjusted.isNotEmpty()) healthWriter.writeSteps(adjusted)
+            adjusted.size
         }
     }
 
@@ -357,25 +382,38 @@ class HealthRepository(
 
     private suspend fun syncDistance(
         stepsRows: kotlinx.coroutines.Deferred<List<HeartRateEntry>>,
+        overlapWorkouts: kotlinx.coroutines.Deferred<List<WorkoutSession>>? = null,
     ) {
         runMetric("distance") {
             // Distance is embedded on the steps minute stream (bridge parity).
             val samples = MiFitnessParsers.parseHourlyDistanceFromSteps(
                 stepsRows.await().map { it.toRaw() },
             )
-            if (samples.isNotEmpty()) healthWriter.writeDistance(samples)
-            samples.size
+            val adjusted = HealthDataNormalizer.subtractWorkoutDistance(
+                samples,
+                overlapWorkouts?.await().orEmpty(),
+            )
+            if (adjusted.isNotEmpty()) healthWriter.writeDistance(adjusted)
+            adjusted.size
         }
     }
 
-    private suspend fun syncActiveCalories(from: String, to: String) {
+    private suspend fun syncActiveCalories(
+        from: String,
+        to: String,
+        overlapWorkouts: kotlinx.coroutines.Deferred<List<WorkoutSession>>? = null,
+    ) {
         runMetric("activeCalories") {
             val samples = MiFitnessParsers.parseHourlyActiveCalories(
                 fetchSemaphore.withPermit { fetchAllByTime("calories", from, to) }
                     .map { it.toRaw() },
             )
-            if (samples.isNotEmpty()) healthWriter.writeActiveCalories(samples)
-            samples.size
+            val adjusted = HealthDataNormalizer.subtractWorkoutCalories(
+                samples,
+                overlapWorkouts?.await().orEmpty(),
+            )
+            if (adjusted.isNotEmpty()) healthWriter.writeActiveCalories(adjusted)
+            adjusted.size
         }
     }
 

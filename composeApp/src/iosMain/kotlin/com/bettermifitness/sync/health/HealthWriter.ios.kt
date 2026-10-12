@@ -61,6 +61,7 @@ import platform.darwin.dispatch_get_main_queue
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlin.coroutines.suspendCoroutine
+import kotlin.math.roundToLong
 
 @OptIn(ExperimentalForeignApi::class)
 actual class HealthWriter : HealthStore {
@@ -185,12 +186,14 @@ actual class HealthWriter : HealthStore {
             val start = NSDate.dateWithTimeIntervalSince1970(timestamp.toDouble())
             val end = NSDate.dateWithTimeIntervalSince1970((timestamp + 3600 - 1).toDouble())
             // Same syncIdentifier + version on re-sync → HealthKit replaces, no double-count.
+            // Workout-adjusted buckets carry a bump so the (lower) corrected value still
+            // overwrites previously synced inflated history (issue #51).
             val metadata = mapOf<Any?, Any?>(
                 HKMetadataKeySyncIdentifier to HealthRecordIds.steps(timestamp),
                 HKMetadataKeySyncVersion to HealthRecordIds.counterVersion(
                     record.steps.toLong(),
                     timestamp,
-                ),
+                ) + if (record.workoutAdjusted) HealthRecordIds.WORKOUT_ADJUSTMENT_VERSION_BUMP else 0L,
             )
             HKQuantitySample.quantitySampleWithType(
                 quantityType = stepsType,
@@ -245,11 +248,12 @@ actual class HealthWriter : HealthStore {
                 endDate = NSDate.dateWithTimeIntervalSince1970(s.endTime.toDouble()),
                 metadata = mapOf<Any?, Any?>(
                     HKMetadataKeySyncIdentifier to HealthRecordIds.distance(s.startTime),
-                    HKMetadataKeySyncVersion to HealthRecordIds.version(
+                    // Counter-based so mid-day growth still wins; adjusted buckets carry a
+                    // bump so the correction overwrites inflated history (issue #51).
+                    HKMetadataKeySyncVersion to HealthRecordIds.counterVersion(
+                        (s.meters * 1000).roundToLong(),
                         s.startTime,
-                        s.endTime,
-                        s.meters,
-                    ),
+                    ) + if (s.workoutAdjusted) HealthRecordIds.WORKOUT_ADJUSTMENT_VERSION_BUMP else 0L,
                 ),
             )
         }
@@ -271,11 +275,12 @@ actual class HealthWriter : HealthStore {
                 endDate = NSDate.dateWithTimeIntervalSince1970(s.endTime.toDouble()),
                 metadata = mapOf<Any?, Any?>(
                     HKMetadataKeySyncIdentifier to HealthRecordIds.activeCalories(s.startTime),
-                    HKMetadataKeySyncVersion to HealthRecordIds.version(
+                    // Counter-based so mid-day growth still wins; adjusted buckets carry a
+                    // bump so the correction overwrites inflated history (issue #51).
+                    HKMetadataKeySyncVersion to HealthRecordIds.counterVersion(
+                        (s.kilocalories * 1000).roundToLong(),
                         s.startTime,
-                        s.endTime,
-                        s.kilocalories,
-                    ),
+                    ) + if (s.workoutAdjusted) HealthRecordIds.WORKOUT_ADJUSTMENT_VERSION_BUMP else 0L,
                 ),
             )
         }

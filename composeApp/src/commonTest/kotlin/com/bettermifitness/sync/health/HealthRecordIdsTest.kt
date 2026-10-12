@@ -48,4 +48,12 @@ class HealthRecordIdsTest {
         val high = HealthRecordIds.counterVersion(500, "hour")
         assertTrue(high > low)
     }
+
+    @Test
+    fun workoutAdjustmentBump_beatsAnyUnadjustedCounter() {
+        // Corrected values are always lower than the inflated ones they replace, so the
+        // bump must exceed every counterVersion reachable under the normalizer caps.
+        val maxPlausible = HealthRecordIds.counterVersion(200_000, 1_700_000_000L)
+        assertTrue(HealthRecordIds.WORKOUT_ADJUSTMENT_VERSION_BUMP > maxPlausible)
+    }
 }
