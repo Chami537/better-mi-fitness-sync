@@ -488,7 +488,7 @@ object MiFitnessParsers {
         return try {
             val root = json.parseToJsonElement(entry.value).jsonObject
             val fallbackDuration = root["total_duration"]?.jsonPrimitive?.longOrNull ?: 0L
-            root["segment_details"]?.jsonArray
+            val segments = root["segment_details"]?.jsonArray
                 ?.mapNotNull {
                     try {
                         it.jsonObject
@@ -497,7 +497,13 @@ object MiFitnessParsers {
                     }
                 }
                 .orEmpty()
-                .mapNotNull { segment -> parseSegmentSession(segment, entry, fallbackDuration) }
+            if (segments.isEmpty()) {
+                // Legacy flat rows carry bedtime/wake_up_time/items at the top level
+                // (no segment_details envelope): parse the root as a single segment,
+                // as 1.0.5 did. Without this, such rows silently yield zero sessions.
+                return listOfNotNull(parseSegmentSession(root, entry, fallbackDuration))
+            }
+            segments.mapNotNull { segment -> parseSegmentSession(segment, entry, fallbackDuration) }
         } catch (_: Exception) {
             emptyList()
         }

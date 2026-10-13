@@ -41,9 +41,18 @@ android {
     }
 
     // Release variant for tagged GitHub releases; PR builds stay on debug.
-    // Signed with the debug key (no keystore secret needed); the release
+    // Signed with the committed debug keystore below (public debug credentials,
+    // stable across CI runners) so updates install without uninstall; the release
     // build type still applies the real release flags (non-debuggable)
     // so public downloads never ship a debuggable APK.
+    signingConfigs {
+        getByName("debug") {
+            storeFile = file("debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+    }
     buildTypes {
         getByName("release") {
             isMinifyEnabled = false

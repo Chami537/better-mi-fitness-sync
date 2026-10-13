@@ -517,6 +517,31 @@ class MiFitnessParsersTest {
     }
 
     @Test
+    fun parseSleepSessions_flatRowWithoutSegments_parsesTopLevelSession() {
+        // Regression for issue #56: legacy rows carry bedtime/wake_up_time/items at
+        // the top level with no segment_details envelope. 1.0.5 parsed them; the
+        // envelope rewrite must fall back to them instead of yielding zero sessions.
+        val entry = RawFitnessEntry(
+            key = "watch_night_sleep",
+            time = 1_700_003_600L,
+            value = """
+                {
+                  "bedtime": 1700000000,
+                  "wake_up_time": 1700036000,
+                  "timezone": 32,
+                  "items": [
+                    {"start_time": 1700000000, "end_time": 1700036000, "state": 2}
+                  ]
+                }
+            """.trimIndent(),
+        )
+        val sessions = MiFitnessParsers.parseSleepSessions(listOf(entry))
+        assertEquals(1, sessions.size)
+        assertEquals(1_700_000_000L, sessions[0].startTime)
+        assertEquals(1_700_036_000L, sessions[0].endTime)
+    }
+
+    @Test
     fun parseSleepSessions_multiSegmentDay_returnsOneSessionPerSegment() {
         val entry = RawFitnessEntry(
             key = "sleep",
